@@ -4,57 +4,242 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interactive System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .row {
+            display: flex;
+            gap: 20px;
+        }
+        .component {
+            border: 1px solid #ccc;
+            padding: 10px;
+            flex: 1;
+        }
+        .component h2 {
+            font-size: 18px;
+        }
+        .component p, .component ul {
+            font-size: 14px;
+        }
+        .full-width {
+            flex: 1;
+        }
+    </style>
     <script>
-        async function updateEnvironment() {
-            const lamp1 = document.getElementById("lamp1").value;
-            const lamp2 = document.getElementById("lamp2").value;
-            const lux = document.getElementById("lux").value;
-            const consumption1 = document.getElementById("consumption1").value;
-            const consumption2 = document.getElementById("consumption2").value;
+        async function fetchComponents() {
+            const response = await fetch('/components');
+            const data = await response.json();
+            document.getElementById("env-state").textContent = JSON.stringify(data.environment, null, 2);
+            document.getElementById("self-awareness").textContent = data.selfawareness.text;
+            document.getElementById("reference").textContent = data.reference.text;
+            document.getElementById("memory").textContent = data.memory.entries
+                .map(entry => `${entry.date}: ${entry.text}`)
+                .join("\n");
 
+            // Update environment UI
+            document.getElementById("lamp1-toggle").checked = data.environment.lamp1 === "on";
+            document.getElementById("lamp2-toggle").checked = data.environment.lamp2 === "on";
+            document.getElementById("lux-slider").value = data.environment.lux;
+            document.getElementById("lux-value").textContent = data.environment.lux;
+            document.getElementById("consumption1-slider").value = data.environment.consumption1;
+            document.getElementById("consumption2-slider").value = data.environment.consumption2;
+        }
+
+        async function updateEnvironment(field, value) {
             const response = await fetch('/environment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lamp1, lamp2, lux, consumption1, consumption2 })
+                body: JSON.stringify({ [field]: value })
             });
-
-            const data = await response.json();
-            document.getElementById("state").textContent = JSON.stringify(data);
+            fetchComponents();
         }
+
+        async function addMemoryEntry() {
+            const entry = document.getElementById("memory-input").value;
+            await fetch('/add_memory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entry })
+            });
+            document.getElementById("memory-input").value = "";
+            fetchComponents();
+        }
+
+        async function recordEnvironmentToMemory() {
+            const response = await fetch('/components');
+            const data = await response.json();
+            const environmentState = JSON.stringify(data.environment, null, 2);
+            await fetch('/add_memory', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entry: `Environment state: ${environmentState}` })
+            });
+            fetchComponents();
+        }
+
+        async function generateAndCopyPrediction() {
+            // Generate the prediction
+            const response = await fetch('/predict');
+            const data = await response.json();
+            const predictionText = data.prompt;
+
+            // Display the prediction in the interface
+            document.getElementById("prediction").textContent = predictionText;
+
+            // Copy the prediction to the clipboard
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(predictionText).then(() => {
+                    showFeedback("Prediction copied to clipboard!");
+                }).catch(err => {
+                    console.error("Could not copy text: ", err);
+                });
+            } else {
+                // Fallback for older browsers
+                const textarea = document.createElement("textarea");
+                textarea.value = predictionText;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand("copy");
+                    alert("Prediction generated and copied to clipboard!");
+                } catch (err) {
+                    console.error("Fallback: Could not copy text: ", err);
+                }
+                document.body.removeChild(textarea);
+            }
+        }
+
+        async function generateAndCopyCuriosity() {
+            const actions = document.getElementById("curiosity-input").value;
+
+            // Generate the curiosity prompt
+            const response = await fetch('/curiosity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ actions })
+            });
+            const data = await response.json();
+            const curiosityText = data.prompt;
+
+            // Display the curiosity prompt in the interface
+            document.getElementById("curiosity-output").textContent = curiosityText;
+
+            // Copy the curiosity prompt to the clipboard
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(curiosityText).then(() => {
+                    showFeedback("Curiosity prompt copied to clipboard!", "curiosity-feedback");
+                }).catch(err => {
+                    console.error("Could not copy text: ", err);
+                });
+            } else {
+                // Fallback for older browsers
+                const textarea = document.createElement("textarea");
+                textarea.value = curiosityText;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand("copy");
+                    showFeedback("Curiosity prompt copied to clipboard!", "curiosity-feedback");
+                } catch (err) {
+                    console.error("Fallback: Could not copy text: ", err);
+                }
+                document.body.removeChild(textarea);
+            }
+        }
+
+        // Function to show feedback for Curiosity (reusing the existing feedback system)
+        function showFeedback(message, elementId) {
+            const feedbackElement = document.getElementById(elementId);
+            feedbackElement.textContent = message;
+            setTimeout(() => {
+                feedbackElement.textContent = ""; // Clear the message after 3 seconds
+            }, 3000);
+        }
+
+
+        window.onload = fetchComponents;
     </script>
 </head>
 <body>
     <h1>Interactive System</h1>
+    <div class="container">
+        <!-- First Row -->
+        <div class="row">
+            <!-- Environment Component -->
+            <div class="component">
+                <h2>Environment</h2>
+                <label>Lamp 1:</label>
+                <input type="checkbox" id="lamp1-toggle" onchange="updateEnvironment('lamp1', this.checked ? 'on' : 'off')">
+                <br>
+                <label>Lamp 2:</label>
+                <input type="checkbox" id="lamp2-toggle" onchange="updateEnvironment('lamp2', this.checked ? 'on' : 'off')">
+                <br>
+                <label>Lux:</label>
+                <input type="range" id="lux-slider" min="0" max="1000" step="1" onchange="updateEnvironment('lux', this.value)">
+                <span id="lux-value">0</span>
+                <br>
+                <label>Consumption Lamp 1:</label>
+                <input type="range" id="consumption1-slider" min="0" max="100" onchange="updateEnvironment('consumption1', this.value)">
+                <br>
+                <label>Consumption Lamp 2:</label>
+                <input type="range" id="consumption2-slider" min="0" max="100" onchange="updateEnvironment('consumption2', this.value)">
+                <br>
+                <h3>State:</h3>
+                <pre id="env-state"></pre>
+            </div>
 
-    <div>
-        <h2>Environment</h2>
-        <label>Lamp 1:</label>
-        <select id="lamp1">
-            <option value="on">On</option>
-            <option value="off" selected>Off</option>
-        </select>
-        <br>
-        <label>Lamp 2:</label>
-        <select id="lamp2">
-            <option value="on">On</option>
-            <option value="off" selected>Off</option>
-        </select>
-        <br>
-        <label>Lux:</label>
-        <input type="number" id="lux" value="0">
-        <br>
-        <label>Consumption 1:</label>
-        <input type="number" id="consumption1" value="0">
-        <br>
-        <label>Consumption 2:</label>
-        <input type="number" id="consumption2" value="0">
-        <br>
-        <button onclick="updateEnvironment()">Update Environment</button>
-    </div>
+            <!-- Self Awareness Component -->
+            <div class="component">
+                <h2>Self Awareness</h2>
+                <p id="self-awareness"></p>
+            </div>
 
-    <div>
-        <h2>State</h2>
-        <p id="state"></p>
+            <!-- Reference Component -->
+            <div class="component">
+                <h2>Reference</h2>
+                <p id="reference"></p>
+            </div>
+        </div>
+
+        <!-- Second Row -->
+        <div class="row">
+            <!-- Memory Component -->
+            <div class="component">
+                <h2>Memory</h2>
+                <input type="text" id="memory-input" placeholder="Add memory entry">
+                <button onclick="addMemoryEntry()">Add</button>
+                <button onclick="recordEnvironmentToMemory()">Record Environment State</button>
+                <pre id="memory"></pre>
+            </div>
+
+            <!-- Prediction Component -->
+            <div class="component">
+                <h2>Prediction</h2>
+                <button onclick="generateAndCopyPrediction()">Generate and Copy</button>
+                <pre id="prediction"></pre>
+            </div>
+        </div>
+
+        <!-- Third Row -->
+        <div class="row">
+            <!-- Curiosity Component -->
+            <div class="component">
+                <h2>Curiosity</h2>
+                <textarea id="curiosity-input" placeholder="Enter possible actions (one per line)"></textarea>
+                <br>
+                <button onclick="generateAndCopyCuriosity()">Generate and Copy</button>
+                <pre id="curiosity-output"></pre>
+            </div>
+        </div>
     </div>
 </body>
 </html>

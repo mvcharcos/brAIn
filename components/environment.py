@@ -1,5 +1,3 @@
-
-# Component Definitions
 class Environment:
     def __init__(self):
         self.lamp1 = "off"
